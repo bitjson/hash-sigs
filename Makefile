@@ -118,4 +118,75 @@ sha256.o: sha256.c sha256.h endian.h
 clean:
 	-rm *.o *.a demo test_hss
 
+.PHONY: asm_x86_fake asm_riscv_fake asm_wasm_fake \
+        asm_x86_real asm_riscv_real asm_wasm_real \
+        asm_fake asm_real update_asm_results
 
+ASM_CFLAGS = -nostdinc -I fake_libc/include -I .
+ASM_OPT    = -Oz
+FAKE_FLAGS = -DFAKE_HASH -include fake_hash.h
+REAL_FLAGS = -DEXT_SHA256_H=\"fake_libc/include/sha256.h\"
+
+TARGET_wasm = --target=wasm32
+
+TARGET_x86   = -target x86_64-linux-gnu
+TARGET_riscv = --target=riscv64 -march=rv64gc -mabi=lp64
+
+define compile_asm
+clang $(1) $(ASM_CFLAGS) $(2) $(ASM_OPT) -S lm_ots_verify.c -o $(3).s
+clang $(1) $(ASM_CFLAGS) $(2) $(ASM_OPT) -c lm_ots_verify.c -o $(3).o
+	llvm-objcopy-19 -O binary --only-section=.text $(3).o $(3).bin
+endef
+
+WASM_LD ?= wasm-ld-19
+define compile_wasm
+clang $(TARGET_wasm) $(ASM_CFLAGS) $(1) $(ASM_OPT) -S lm_ots_verify.c -o $(2).s
+clang $(TARGET_wasm) $(ASM_CFLAGS) $(1) $(ASM_OPT) -c lm_ots_verify.c -o $(2).o
+$(WASM_LD) --allow-undefined --no-entry \
+        --export=lm_ots_validate_signature_compute $(2).o -o $(2).wasm
+        llvm-objdump-19 -d $(2).wasm > $(2).wat
+endef
+
+asm_x86_fake:
+	$(call compile_asm,$(TARGET_x86),$(FAKE_FLAGS),lm_ots_validate_signature_compute_x86)
+
+asm_riscv_fake:
+	$(call compile_asm,$(TARGET_riscv),$(FAKE_FLAGS),lm_ots_validate_signature_compute_riscv)
+
+asm_x86_real:
+	$(call compile_asm,$(TARGET_x86),$(REAL_FLAGS),lm_ots_validate_signature_compute_x86_real)
+
+asm_riscv_real:
+	$(call compile_asm,$(TARGET_riscv),$(REAL_FLAGS),lm_ots_validate_signature_compute_riscv_real)
+
+asm_wasm_fake:
+	$(call compile_wasm,$(FAKE_FLAGS),lm_ots_validate_signature_compute_wasm)
+
+asm_wasm_real:
+	$(call compile_wasm,$(REAL_FLAGS),lm_ots_validate_signature_compute_wasm_real)
+
+asm_fake: asm_x86_fake asm_riscv_fake asm_wasm_fake
+	
+asm_real: asm_x86_real asm_riscv_real asm_wasm_real
+
+	# Reproduce assembly outputs and collect their sizes.  This target
+# runs all four build variants and writes a summary to asm_results.txt.
+update_asm_results: asm_fake asm_real
+	@rm -f asm_results.txt
+	@printf "target variant text asm bin wat\n" > asm_results.txt
+	@for f in x86 x86_real riscv riscv_real wasm wasm_real; do \
+	case $$f in \
+	*wasm*) \
+	t=$$(llvm-size-19 -A lm_ots_validate_signature_compute_$$f.wasm | awk '/CODE/{print $$2}'); \
+	a=$$(wc -c < lm_ots_validate_signature_compute_$$f.s); \
+	b=$$(wc -c < lm_ots_validate_signature_compute_$$f.wasm); \
+	w=$$(wc -c < lm_ots_validate_signature_compute_$$f.wat); \
+	echo "$$f $$t $$a $$b $$w" >> asm_results.txt ;; \
+	*) \
+	t=$$(llvm-size-19 -A lm_ots_validate_signature_compute_$$f.o | awk '/\.text/{print $$2}'); \
+	a=$$(wc -c < lm_ots_validate_signature_compute_$$f.s); \
+	b=$$(wc -c < lm_ots_validate_signature_compute_$$f.bin); \
+	echo "$$f $$t $$a $$b -" >> asm_results.txt ;; \
+	esac; \
+	done
+	-rm -f lm_ots_validate_signature_compute_*.o

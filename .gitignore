@@ -2,3 +2,7 @@
 *.a
 demo
 test_hss
+
+# Generated assembly and binaries
+asm_results.txt
+lm_ots_validate_signature_compute_*

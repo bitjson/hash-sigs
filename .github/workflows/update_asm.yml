@@ -1,0 +1,33 @@
+name: update asm results
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'Makefile'
+      - 'compile_asm.md'
+      - 'fake_hash.h'
+      - 'fake_libc/**'
+      - '.github/workflows/update_asm.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang and LLVM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 lld-19 llvm-19
+          if ! command -v llvm-objcopy-19 >/dev/null; then
+            sudo ln -s $(which llvm-objcopy) /usr/bin/llvm-objcopy-19
+          fi
+      - name: Regenerate assembly results
+        run: make update_asm_results
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: asm-results
+          path: |
+            asm_results.txt
+            lm_ots_validate_signature_compute_*

@@ -1,5 +1,9 @@
 #if !defined( HASH_H__ )
 #define HASH_H__
+
+#ifdef FAKE_HASH
+#include "fake_hash.h"
+#else
 #include "sha256.h"
 #include <stddef.h>
 #include <stdbool.h>
@@ -53,5 +57,6 @@ void hss_update_hash_context( int h, union hash_context *ctx,
                           const void *msg, size_t len_msg );
 void hss_finalize_hash_context( int h, union hash_context *ctx,
                           void *buffer);
+#endif /* FAKE_HASH */
 
 #endif /* HASH_H__  */
