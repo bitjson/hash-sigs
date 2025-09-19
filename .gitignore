@@ -5,4 +5,5 @@ test_hss
 
 # Generated assembly and binaries
 asm_results.txt
-lm_ots_validate_signature_compute_*
+asm_results.csv
+lm_ots_*_*_*
